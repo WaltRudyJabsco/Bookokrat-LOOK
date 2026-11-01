@@ -252,6 +252,7 @@ pub struct App {
     pub navigation_panel: NavigationPanel,
     text_reader: MarkdownTextReader,
     narrator: Option<crate::narration::Narrator>,
+    quit_requested: bool,
     home_context: LibraryContext,
     book_images: BookImages,
     current_book: Option<EpubBook>,
@@ -756,6 +757,7 @@ impl App {
             navigation_panel,
             text_reader,
             narrator: None,
+            quit_requested: false,
             home_context,
             book_images,
             current_book: None,
@@ -1099,6 +1101,10 @@ impl App {
         path: &str,
         position: Option<OpenPosition>,
     ) -> Result<()> {
+        if let Some(narrator) = self.narrator.as_mut() {
+            let _ = narrator.command("stop");
+        }
+        self.text_reader.set_narration_node(None);
         let format = BookManager::detect_format(path)
             .ok_or_else(|| anyhow::anyhow!("Unsupported file format: {}", path))?;
         if Self::blocked_by_no_images(path) {
@@ -4945,6 +4951,12 @@ impl App {
     }
 
     fn narration_command(&mut self, action: &str) {
+        #[cfg(feature = "pdf")]
+        if self.is_pdf_mode() {
+            self.notifications
+                .info("Native read-along supports EPUB text; PDF reading is unchanged");
+            return;
+        }
         if self.current_book.is_none() {
             self.text_reader
                 .set_error_hud("Open an EPUB to use read-along");
@@ -4981,10 +4993,15 @@ impl App {
         for event in events {
             let state = event["state"].as_str().unwrap_or("");
             if state == "disconnected" {
+                let message = self
+                    .narrator
+                    .as_ref()
+                    .map(|n| n.status.clone())
+                    .filter(|s| s.starts_with("Error:"))
+                    .unwrap_or_else(|| "Narration stopped; Space+r retries".into());
                 self.narrator = None;
                 self.text_reader.set_narration_node(None);
-                self.text_reader
-                    .set_error_hud("Narration stopped; Space+r retries");
+                self.text_reader.set_error_hud(message);
                 continue;
             }
             let Some(narrator) = self.narrator.as_mut() else {
@@ -5002,6 +5019,10 @@ impl App {
             }
             narrator.playing = matches!(state, "reading" | "preparing" | "paused");
             if state == "error" {
+                narrator.status = format!(
+                    "Error: {}",
+                    event["message"].as_str().unwrap_or("Narration failed")
+                );
                 narrator.node = None;
                 self.text_reader.set_narration_node(None);
                 self.text_reader
@@ -5107,6 +5128,11 @@ impl App {
         use crate::keybindings::action::Action;
 
         match action {
+            Action::Quit => {
+                self.save_bookmark();
+                self.quit_requested = true;
+                true
+            }
             Action::NarrationToggle => {
                 self.narration_command("toggle");
                 true
@@ -8704,7 +8730,7 @@ where
                 _ => {}
             }
 
-            if should_quit {
+            if should_quit || app.quit_requested {
                 break;
             }
         }
@@ -8895,7 +8921,7 @@ where
             let _ = event_source.poll(timeout);
         }
 
-        if should_quit {
+        if should_quit || app.quit_requested {
             return Ok(());
         }
     }
