@@ -4588,7 +4588,7 @@ impl App {
                 ),
                 Action::Quit,
             ),
-            btn(Action::NarrationToggle, "Read/pause"),
+            btn(Action::NarrationToggle, "Read"),
             btn(Action::NarrationVoice, "Voice"),
             btn(Action::ToggleHelp, "Help"),
         ]
@@ -4830,25 +4830,42 @@ impl App {
         };
         let left_para = Paragraph::new(left_content).style(
             Style::default()
-                .fg(current_theme().base_03)
+                .fg(current_theme().base_04)
                 .bg(self.theme_background()),
         );
-        f.render_widget(left_para, inner_area);
-
-        let text_color = current_theme().base_03;
+        let text_color = current_theme().base_04;
         let buttons = Self::help_bar_buttons();
         let mut spans = Vec::new();
         for (i, (label, _)) in buttons.iter().enumerate() {
-            spans.push(Span::raw("["));
+            let (key, description) = label.split_once(": ").unwrap_or((label.as_str(), ""));
+            spans.push(Span::styled("[", Style::default().fg(text_color)));
             spans.push(Span::styled(
-                label.clone(),
+                key.to_owned(),
                 Style::default()
-                    .fg(text_color)
+                    .fg(current_theme().base_0d)
                     .add_modifier(Modifier::UNDERLINED),
             ));
-            spans.push(Span::raw(if i < buttons.len() - 1 { "] " } else { "]" }));
+            spans.push(Span::styled(
+                format!(": {description}"),
+                Style::default().fg(text_color),
+            ));
+            spans.push(Span::styled(
+                if i < buttons.len() - 1 { "] " } else { "]" },
+                Style::default().fg(text_color),
+            ));
         }
         let right_content = Line::from(spans);
+        // Reserve controls before painting context text, so they cannot overlap.
+        let controls_width = right_content.width().min(inner_area.width as usize) as u16;
+        f.render_widget(
+            left_para,
+            Rect::new(
+                inner_area.x,
+                inner_area.y,
+                inner_area.width.saturating_sub(controls_width + 1),
+                inner_area.height,
+            ),
+        );
 
         let right_para = Paragraph::new(right_content)
             .alignment(Alignment::Right)
