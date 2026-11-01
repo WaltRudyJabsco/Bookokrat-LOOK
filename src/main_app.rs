@@ -5009,10 +5009,10 @@ impl App {
                 continue;
             }
             narrator.status = format!(
-                "{} · {} · {:.1}× · Space+r pause/play · Space+-/+ speed · Space+x stop",
-                state,
+                "{} · {:.1}× · {}",
                 event["voice"].as_str().unwrap_or("Voice"),
-                event["speed"].as_f64().unwrap_or(1.0)
+                event["speed"].as_f64().unwrap_or(1.0),
+                state
             );
             self.text_reader.set_hud_message(
                 narrator.status.clone(),

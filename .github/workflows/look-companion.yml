@@ -6,13 +6,16 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: look-companion-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 jobs:
   build:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          - os: macos-15
             target: aarch64-apple-darwin
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
@@ -20,6 +23,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
       - name: Linux dependencies
         if: runner.os == 'Linux'
@@ -29,12 +34,12 @@ jobs:
           cargo test --locked --lib narration
           cargo test --locked --lib keybindings
       - name: Build with PDF and SVG
-        run: cargo build --locked --release
+        run: cargo build --locked --release --target ${{ matrix.target }}
       - name: Package
         shell: bash
         run: |
           mkdir -p build
-          cp target/release/bookokrat build/
+          cp target/${{ matrix.target }}/release/bookokrat build/
           cp LICENSE build/
           printf '%s\n%s\n' 'https://github.com/WaltRudyJabsco/Bookokrat-LOOK' "$GITHUB_SHA" > build/SOURCE.txt
           tar -czf "bookokrat-0.3.14-look.1-${{ matrix.target }}.tar.gz" -C build bookokrat LICENSE SOURCE.txt
