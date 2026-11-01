@@ -22,6 +22,7 @@ pub mod library;
 pub mod main_app;
 pub mod markdown;
 pub mod marks;
+pub mod narration;
 pub mod notification;
 pub mod widget;
 pub use components::mathml_renderer;

@@ -1,3 +1,8 @@
+> **LOOK narration companion fork:** native EPUB read-along, local voice selection,
+> and speed controls. See [LOOK narration](LOOK-NARRATION.md) for keys, setup and
+> source/package details. Based on upstream Bookokrat; its AGPL license and PDF/SVG
+> reading support are retained.
+
 # Bookokrat
 
 Terminal EPUB/PDF/DJVU reader focused on speed, smooth navigation, and Vim-style workflows.

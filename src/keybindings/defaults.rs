@@ -116,6 +116,14 @@ fn add_popup_layer(_ctx: &mut ContextKeymap) {}
 fn global_specifics(keymap: &mut Keymap) {
     let ctx = keymap.context_mut(KeyContext::Global);
     bind!(ctx, "?" => Action::ToggleHelp);
+    bind!(ctx, "<Space>r" => Action::NarrationToggle);
+    bind!(ctx, "<Space>R" => Action::NarrationHere);
+    bind!(ctx, "<Space>x" => Action::NarrationStop);
+    bind!(ctx, "<Space>v" => Action::NarrationVoice);
+    bind!(ctx, "<Space>V" => Action::NarrationDefault);
+    bind!(ctx, "<Space>-" => Action::NarrationSlower);
+    bind!(ctx, "<Space>+" => Action::NarrationFaster);
+
     bind!(ctx, "<Space>h" => Action::ToggleReadingHistory);
     bind!(ctx, "<Space>d" => Action::ToggleBookStats);
     bind!(ctx, "<Space>f" => Action::OpenBookSearch);
