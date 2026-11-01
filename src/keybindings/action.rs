@@ -15,6 +15,13 @@ pub enum Action {
     ForceRedraw,
     Suspend,
     SwitchFocus,
+    NarrationToggle,
+    NarrationHere,
+    NarrationStop,
+    NarrationVoice,
+    NarrationDefault,
+    NarrationSlower,
+    NarrationFaster,
 
     // === Navigation (movement in lists/content) ===
     MoveDown,
@@ -174,6 +181,13 @@ impl Action {
         Action::ForceRedraw,
         Action::Suspend,
         Action::SwitchFocus,
+        Action::NarrationToggle,
+        Action::NarrationHere,
+        Action::NarrationStop,
+        Action::NarrationVoice,
+        Action::NarrationDefault,
+        Action::NarrationSlower,
+        Action::NarrationFaster,
         Action::MoveDown,
         Action::MoveUp,
         Action::MoveLeft,
@@ -302,6 +316,14 @@ impl Action {
             ForceRedraw => "Force a full-screen redraw",
             Suspend => "Suspend the process (job control)",
             SwitchFocus => "Switch focus between nav panel and reader",
+
+            NarrationToggle => "Read aloud or pause/resume narration",
+            NarrationHere => "Read aloud from the current paragraph",
+            NarrationStop => "Stop narration",
+            NarrationVoice => "Choose the next installed narration voice",
+            NarrationDefault => "Restore the default narration voice",
+            NarrationSlower => "Decrease narration speed",
+            NarrationFaster => "Increase narration speed",
 
             // Navigation / movement
             MoveDown => "Move selection down one item",
@@ -495,6 +517,8 @@ mod tests {
             match a {
                 Nop | Unknown => a,
                 Quit | ForceRedraw | Suspend | SwitchFocus => a,
+                NarrationToggle | NarrationHere | NarrationStop | NarrationVoice
+                | NarrationDefault | NarrationSlower | NarrationFaster => a,
                 MoveDown | MoveUp | MoveLeft | MoveRight => a,
                 ScrollHalfDown | ScrollHalfUp | ScrollPageDown | ScrollPageUp => a,
                 GoTop | GoBottom | Select => a,

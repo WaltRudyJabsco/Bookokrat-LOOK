@@ -1,5 +1,6 @@
 mod comments;
 mod images;
+mod narration;
 mod navigation;
 mod normal_mode;
 mod rendering;
@@ -132,6 +133,9 @@ struct CommentTextareaLayout {
 pub struct MarkdownTextReader {
     settings: RuntimeSettings,
     markdown_document: Option<Arc<Document>>,
+    narration_node: Option<usize>,
+    narration_range: Option<std::ops::Range<usize>>,
+    narration_follow_pending: bool,
     rendered_content: RenderedContent,
 
     // Scrolling state
@@ -335,6 +339,9 @@ impl MarkdownTextReader {
         Self {
             settings,
             markdown_document: None,
+            narration_node: None,
+            narration_range: None,
+            narration_follow_pending: false,
             rendered_content: RenderedContent {
                 lines: Vec::new(),
                 total_height: 0,
@@ -653,6 +660,7 @@ impl MarkdownTextReader {
             self.rendered_content =
                 self.render_document_to_lines(doc.as_ref(), width, palette, is_focused);
             self.total_wrapped_lines = self.rendered_content.total_height;
+            self.narration_range = None;
             self.last_width = width;
             self.last_focus_state = is_focused;
             self.restore_reflow_anchor();
@@ -686,6 +694,7 @@ impl MarkdownTextReader {
                 self.activate_local_search_from_global(query, node_index);
             }
         }
+        self.refresh_narration_range();
         let title_text = if let Some(ref title) = self.chapter_title {
             format!("[{current_chapter}/{total_chapters}] {title}")
         } else {
@@ -983,7 +992,12 @@ impl MarkdownTextReader {
             return Line::from("");
         }
 
-        let mut line_spans = if self.highlight_visual_line == Some(visual_line_idx) {
+        let mut line_spans = if self.highlight_visual_line == Some(visual_line_idx)
+            || self
+                .narration_range
+                .as_ref()
+                .is_some_and(|range| range.contains(&line_idx))
+        {
             rendered_line
                 .spans
                 .iter()
@@ -1793,6 +1807,8 @@ impl MarkdownTextReader {
     }
 
     pub fn clear_content(&mut self) {
+        self.narration_node = None;
+        self.narration_range = None;
         self.annotation_peek = None;
         self.pending_reflow_anchor = None;
         self.scroll_offset = 0;

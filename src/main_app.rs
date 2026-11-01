@@ -251,6 +251,7 @@ pub struct App {
     pub book_manager: BookManager,
     pub navigation_panel: NavigationPanel,
     text_reader: MarkdownTextReader,
+    narrator: Option<crate::narration::Narrator>,
     home_context: LibraryContext,
     book_images: BookImages,
     current_book: Option<EpubBook>,
@@ -754,6 +755,7 @@ impl App {
             book_manager,
             navigation_panel,
             text_reader,
+            narrator: None,
             home_context,
             book_images,
             current_book: None,
@@ -2364,6 +2366,9 @@ impl App {
     }
 
     fn update_content(&mut self) {
+        if let Some(narrator) = self.narrator.as_mut() {
+            let _ = narrator.command("stop");
+        }
         if let Some(book) = &mut self.current_book {
             let current_chapter = book.current_chapter();
             let analyzed_chapter = if book
@@ -4570,10 +4575,15 @@ impl App {
         };
 
         vec![
-            btn(Action::ToggleCommentsViewer, "Comments"),
-            btn(Action::ToggleReadingHistory, "History"),
-            btn(Action::ToggleBookStats, "Stats"),
-            btn(Action::OpenThemeSelector, "Theme"),
+            (
+                format!(
+                    "{}: Quit",
+                    Self::key_for(KeyContext::EpubContent, Action::Quit)
+                ),
+                Action::Quit,
+            ),
+            btn(Action::NarrationToggle, "Read/pause"),
+            btn(Action::NarrationVoice, "Voice"),
             btn(Action::ToggleHelp, "Help"),
         ]
     }
@@ -4906,6 +4916,113 @@ impl App {
     /// Check if a key is a global hotkey that should work regardless of focus.
     /// Uses the configurable keymap for Global context.
     /// Returns true if the key was handled as a global hotkey.
+    fn narration_read_from(&mut self, mut start: usize) -> Result<(), String> {
+        for _ in 0..32 {
+            if let Some((node, text)) = self.text_reader.narration_passage(start) {
+                let chapter = self.text_reader.get_current_chapter_file().clone();
+                self.narrator
+                    .as_mut()
+                    .ok_or("Narration is unavailable")?
+                    .speak(node, chapter, &text)?;
+                self.text_reader.set_narration_node(Some(node));
+                self.save_bookmark();
+                return Ok(());
+            }
+            if self
+                .navigate_chapter_relative(ChapterDirection::Next)
+                .is_err()
+            {
+                break;
+            }
+            start = 0;
+        }
+        if let Some(narrator) = self.narrator.as_mut() {
+            let _ = narrator.command("stop");
+        }
+        self.text_reader.set_narration_node(None);
+        self.text_reader.set_normal_hud("Book finished");
+        Ok(())
+    }
+
+    fn narration_command(&mut self, action: &str) {
+        if self.current_book.is_none() {
+            self.text_reader
+                .set_error_hud("Open an EPUB to use read-along");
+            return;
+        }
+        let result = (|| -> Result<(), String> {
+            if self.narrator.is_none() {
+                self.narrator = Some(crate::narration::Narrator::start()?);
+            }
+            match action {
+                "toggle" if self.narrator.as_ref().is_some_and(|n| n.playing) => {
+                    self.narrator.as_mut().unwrap().command("pause")
+                }
+                "toggle" | "here" => {
+                    self.narration_read_from(self.text_reader.focused_node_index())
+                }
+                other => {
+                    self.narrator.as_mut().unwrap().command(other)?;
+                    if other == "stop" {
+                        self.text_reader.set_narration_node(None);
+                    }
+                    Ok(())
+                }
+            }
+        })();
+        if let Err(error) = result {
+            self.text_reader.set_error_hud(error);
+        }
+    }
+
+    fn poll_narration(&mut self) -> bool {
+        let events = self.narrator.as_mut().map(|n| n.poll()).unwrap_or_default();
+        let changed = !events.is_empty();
+        for event in events {
+            let state = event["state"].as_str().unwrap_or("");
+            if state == "disconnected" {
+                self.narrator = None;
+                self.text_reader.set_narration_node(None);
+                self.text_reader
+                    .set_error_hud("Narration stopped; Space+r retries");
+                continue;
+            }
+            let Some(narrator) = self.narrator.as_mut() else {
+                break;
+            };
+            if event.get("id").is_some() && event["id"].as_u64().unwrap_or(0) != narrator.token {
+                continue;
+            }
+            if state == "done" {
+                let next = narrator.node.map(|node| node + 1).unwrap_or(0);
+                if let Err(error) = self.narration_read_from(next) {
+                    self.text_reader.set_error_hud(error);
+                }
+                continue;
+            }
+            narrator.playing = matches!(state, "reading" | "preparing" | "paused");
+            if state == "error" {
+                narrator.node = None;
+                self.text_reader.set_narration_node(None);
+                self.text_reader
+                    .set_error_hud(event["message"].as_str().unwrap_or("Narration failed"));
+                continue;
+            }
+            narrator.status = format!(
+                "{} · {} · {:.1}× · Space+r pause/play · Space+-/+ speed · Space+x stop",
+                state,
+                event["voice"].as_str().unwrap_or("Voice"),
+                event["speed"].as_f64().unwrap_or(1.0)
+            );
+            self.text_reader.set_hud_message(
+                narrator.status.clone(),
+                crate::widget::hud_message::HudMode::Normal,
+                Duration::from_secs(3600),
+            );
+        }
+        changed
+    }
+
     fn handle_global_hotkeys(&mut self, key: crossterm::event::KeyEvent) -> bool {
         use crate::keybindings::context::KeyContext;
         use crate::keybindings::keymap::LookupResult;
@@ -4990,6 +5107,35 @@ impl App {
         use crate::keybindings::action::Action;
 
         match action {
+            Action::NarrationToggle => {
+                self.narration_command("toggle");
+                true
+            }
+            Action::NarrationHere => {
+                self.narration_command("here");
+                true
+            }
+            Action::NarrationStop => {
+                self.narration_command("stop");
+                true
+            }
+            Action::NarrationVoice => {
+                self.narration_command("voice");
+                true
+            }
+            Action::NarrationDefault => {
+                self.narration_command("default");
+                true
+            }
+            Action::NarrationSlower => {
+                self.narration_command("slower");
+                true
+            }
+            Action::NarrationFaster => {
+                self.narration_command("faster");
+                true
+            }
+
             Action::ToggleHelp => {
                 if let FocusedPanel::Main(panel) = self.focused_panel {
                     self.previous_main_panel = panel;
@@ -8646,6 +8792,9 @@ where
         }
 
         if last_tick.elapsed() >= tick_rate {
+            if app.poll_narration() {
+                needs_redraw = true;
+            }
             let highlight_changed = app.text_reader.update_highlight(); // Update highlight state
             let epub_hud_expired = app.text_reader.update_hud_message();
             let deferred_reload_started = app.text_reader.tick_deferred_image_reload();
